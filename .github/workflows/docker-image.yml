@@ -1,0 +1,46 @@
+name: Build RagFlow ARM64 (Native)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-arm-native:
+    # 关键修改：直接使用 ARM 架构的 Runner
+    runs-on: ubuntu-24.04-arm
+    
+    steps:
+      # 1. 清理环境（由于 ARM runner 资源通常较新，这一步通常可以省略，但保留也没坏处）
+      - name: Free Disk Space (Optional)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+
+      # 2. 安装 uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
+        with:
+          version: "latest"
+
+      # 3. 执行完整的构建流程
+      # 注意：在原生 ARM 环境下，docker build 默认就是构建 linux/arm64
+      - name: Clone, Install and Build
+        run: |
+          git clone https://github.com/infiniflow/ragflow.git
+          cd ragflow
+          
+          # 配置 python 3.12 环境
+          uv python install 3.12
+          
+          # 使用虚拟环境下载依赖
+          uv run --python 3.12 --with huggingface_hub download_deps.py
+          
+          # 构建依赖镜像 (不再需要 --platform linux/arm64，原生即为 arm64)
+          docker build -f Dockerfile.deps -t infiniflow/ragflow_deps .
+          
+          # 构建主镜像
+          docker build -f Dockerfile -t infiniflow/ragflow:nightly .
+
+      # 4. (可选) 验证架构
+      - name: Verify Architecture
+        run: |
+          docker image inspect infiniflow/ragflow:nightly --format '{{.Os}}/{{.Architecture}}'
